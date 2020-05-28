@@ -6,5 +6,5 @@ Every Op uses:
 <li>Multithreading</li>
 <li>SIMD AVX2</li>
 <li>Inline Assembly</li>
-</ul>
+</ul><br>
 &nbsp&nbsp&nbsp to make things as fast as possible.
