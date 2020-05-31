@@ -11,7 +11,7 @@ DLLEXPORT float* avx2_malloc(unsigned long long size) {
 	return (float*)_aligned_malloc(size, 32);
 }
 
-DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int trans_a, int trans_b) {
+DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int trans_a, int trans_b, float* tempmem) {
 
 	memset(C, 0, sizeof(float) * M * N);
 
@@ -36,7 +36,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 	int Kh = K % KB;
 
 	if (trans_a <= 0 && trans_b <= 0) {
-		float* Bp = (float*)_aligned_malloc(sizeof(float) * Nr * KB * NR, 32);
+		float* Bp = tempmem;// (float*)_aligned_malloc(sizeof(float) * Nr * KB * NR, 32);
 		for (int kb = 0; kb < Kb; kb++) {
 
 			#pragma omp parallel for
@@ -50,8 +50,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR;// (float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -183,7 +182,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -248,8 +246,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			}
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR;// (float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -381,7 +378,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -437,7 +433,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 		}
 	}
 	else if (trans_a > 0 && trans_b > 0) {
-		float* Bp = (float*)_aligned_malloc(sizeof(float) * Nr * KB * NR, 32);
+		float* Bp = tempmem;// (float*)_aligned_malloc(sizeof(float) * Nr * KB* NR, 32);
 		for (int kb = 0; kb < Kb; kb++) {
 
 			#pragma omp parallel for
@@ -451,8 +447,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR; //(float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -584,7 +579,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -655,8 +649,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			}
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR; //(float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -787,7 +780,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -849,7 +841,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 		}
 	}
 	else if (trans_a > 0) {
-		float* Bp = (float*)_aligned_malloc(sizeof(float) * Nr * KB * NR, 32);
+		float* Bp = tempmem;// (float*)_aligned_malloc(sizeof(float)* Nr* KB* NR, 32);
 		for (int kb = 0; kb < Kb; kb++) {
 
 			#pragma omp parallel for
@@ -863,8 +855,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR;//(float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -996,8 +987,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
-
 					for (int nr = 0; nr < Nr; nr++) {
 
 						float* pA = A + (Mb * MB + m);
@@ -1067,8 +1056,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			}
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR;// (float*)_aligned_malloc(sizeof(float)* Mr* Kh* MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -1199,7 +1187,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -1258,10 +1245,10 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 					}
 				}
 			}
-		}		
+		}
 	}
 	else {
-		float* Bp = (float*)_aligned_malloc(sizeof(float) * Nr * KB * NR, 32);
+		float* Bp = tempmem;// (float*)_aligned_malloc(sizeof(float)* Nr* KB* NR, 32);
 		for (int kb = 0; kb < Kb; kb++) {
 
 			#pragma omp parallel for
@@ -1275,8 +1262,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR; //(float*)_aligned_malloc(sizeof(float) * Mr * KB * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -1407,7 +1393,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -1472,8 +1457,7 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			}
 			#pragma omp parallel for
 			for (int mb = 0; mb < Mb; mb++) {
-				float* Ap = (float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
-				float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
+				float* Ap = tempmem + Nr * KB * NR + mb * Mr * KB * MR; //(float*)_aligned_malloc(sizeof(float) * Mr * Kh * MR, 32);
 
 				for (int mr = 0; mr < Mr; mr++) {
 					for (int m = 0; m < MR; m++) {
@@ -1604,7 +1588,6 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 			if (Mh != 0) {
 				#pragma omp parallel for
 				for (int m = 0; m < Mh; m++) {
-					float* mt = (float*)_aligned_malloc(sizeof(float) * MR * NR, 32);
 
 					for (int nr = 0; nr < Nr; nr++) {
 
@@ -1662,14 +1645,4 @@ DLLEXPORT void avx2_gemm(float* A, float* B, float* C, int M, int N, int K, int 
 }
 
 
-
-
-DLLEXPORT void test(float* x) {
-
-	for (int i = 0; i < 10000000; i += 2) {
-		x[i] = (x[i] + 3) * (x[i] - 1);
-		x[i] = (x[i] + 3) * (x[i] - 1);
-	}
-
-}
 

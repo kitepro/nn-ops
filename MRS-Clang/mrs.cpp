@@ -11,6 +11,7 @@ DLLEXPORT float* avx2_malloc(unsigned long long size) {
 	return (float*)_aligned_malloc(size, 32);
 }
 
+/*
 DLLEXPORT void avx2_mrs(float* x, float* g, float* m, float* r, int size, float lr, float beta1, float beta2, float eps, int timestep) {
 
 	#pragma omp parallel for
@@ -91,6 +92,37 @@ DLLEXPORT void avx2_mrs(float* x, float* g, float* m, float* r, int size, float 
 			m[i] = beta1 * m[i] + nbeta1 * g[i];
 			r[i] = beta2 * r[i] + nbeta2 * g[i] * g[i];
 			x[i] -= lr * (m[i] * nbeta1t) / (sqrt(r[i] * nbeta2t) + eps);
+		}
+
+	}
+
+}
+*/
+
+
+DLLEXPORT void avx2_mrs(float* x, float* g, float* m, float* r, int size, float alr, float slr, float sgdm, float beta1, float beta2, float eps, int timestep) {
+
+	#pragma omp parallel for
+	for (int t = 0; t < THREADS; t++) {
+
+		int i = t * ((float)size / THREADS);
+		int ih = (t + 1) * ((float)size / THREADS);
+		int im = i + ((ih - i) / 8) * 8;
+		float sgdmul = pow(sgdm, timestep);
+
+		float* px = x + i;
+		float* pg = g + i;
+		float* pm = m + i;
+		float* pr = r + i;
+		int ic = im - i;
+		float nbeta1 = 1 - beta1;
+		float nbeta2 = 1 - beta2;
+		float nbeta1t = 1 / (1 - pow(beta1, timestep));
+		float nbeta2t = 1 / (1 - pow(beta2, timestep));
+		for (; i < ih; i++) {
+			m[i] = beta1 * m[i] + nbeta1 * g[i];
+			r[i] = beta2 * r[i] + nbeta2 * g[i] * g[i];
+			x[i] -= alr * (m[i] * nbeta1t) / (sqrt(r[i] * nbeta2t) + eps) * sgdmul + slr * g[i] * (1 - sgdmul);
 		}
 
 	}

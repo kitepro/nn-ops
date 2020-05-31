@@ -250,8 +250,8 @@ DLLEXPORT void avx2_actv_f(float* x, float* y, int size, int type) {
 			}			
 		}
 		else if (type == 1) {
-			avx2_sigmoid_x8(x + il, y + il, ic);
-			for (int i = im; i < ih; i++) {
+			//avx2_sigmoid_x8(x + il, y + il, ic);
+			for (int i = il; i < ih; i++) {
 				y[i] = 1.0 / (1.0 + exp(-x[i]));
 			}
 		}
@@ -277,8 +277,8 @@ DLLEXPORT void avx2_actv_b(float* x, float* y, float* g, int size, int type) {
 			}
 		}
 		else if (type == 1) {
-			avx2_sigmoid_derv_x8(x + il, y + il, g + il, ic);
-			for (int i = im; i < ih; i++) {
+			//avx2_sigmoid_derv_x8(x + il, y + il, g + il, ic);
+			for (int i = il; i < ih; i++) {
 				float e = exp(-x[i]);
 				y[i] = e * g[i] / (1 + e) / (1 + e);
 			}
