@@ -1125,9 +1125,8 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 	memset(out, 0, sizeof(float) * batchsize * NH * NW * N);
 
 	int Nh = (N / 4) * 4;
-	int Ch = (C / 8) * 8;
 	int Wh = (W / 3) * 3;
-	int C8 = Ch;
+	int C8 = (C / 8) * 8;
 
 	int WC = W * C;
 	int HWC = H * WC;
@@ -1140,550 +1139,367 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 	int NS = N * stride;
 	long long NS4 = NS * 4;
 
-	if (Nh != 0 && Ch != 0 && Wh != 0) {
+	#pragma omp parallel for
+	for (int nh = 0; nh < NH; nh++) {
+		float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
 
-		int NB = (Nh / 16 < THREADS) ? 4 : 16;
-		int CB = 512;
-
-		int Nb = ceil((float)Nh / NB);
-		int Cb = ceil((float)Ch / CB);
-
-		#pragma omp parallel for
-		for (int nb = 0; nb < Nb; nb++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
-			int Nl = nb * NB;
-			int Nm = (Nl + NB > Nh) ? Nh - Nl : NB;
-
-			float* kern1 = kern + nb * NB * C;
-			float* out1 = out + nb * NB;
-			for (int cb = 0; cb < Cb; cb++) {
-				int Cl = cb * CB;
-				int Cm = (Cl + CB > Ch) ? Ch - Cl : CB;
-
-				float* img1 = img + cb * CB;
-				float* kern2 = kern1 + cb * CB;
-				for (int b = 0; b < batchsize; b++) {
-					float* img2 = img1 + b * HWC;
-					float* out2 = out1 + b * NHNWN;
-					for (int h = 0; h < H; h++) {
-						float* img3 = img2 + h * WC;
-						for (int x = 0; x < Kx; x++) {
-							int nh = (h * stride + x);
-							float* kern3 = kern2 + x * KyNC;
-							float* out3 = out2 + nh * NWN;
-							for (int y = 0; y < Ky; y++) {
-								float* kern4 = kern3 + y * NC;
-								for (int w = 0; w < Wh; w += 3) {
-									int nw = (w * stride + y);
-									float* pImg = img3 + w * C;
-									float* out4 = out3 + nw * N;
-									for (int n = 0; n < Nm; n += 4) {
-
-										float* pKern = kern4 + n * C;
-										float* pOut = out4 + n;
-
-										__asm {
-
-											MOV r12, C4
-
-											VXORPS ymm0, ymm0, ymm0
-											VXORPS ymm1, ymm1, ymm1
-											VXORPS ymm2, ymm2, ymm2
-											VXORPS ymm3, ymm3, ymm3
-											VXORPS ymm4, ymm4, ymm4
-											VXORPS ymm5, ymm5, ymm5
-											VXORPS ymm6, ymm6, ymm6
-											VXORPS ymm7, ymm7, ymm7
-											VXORPS ymm8, ymm8, ymm8
-											VXORPS ymm9, ymm9, ymm9
-											VXORPS ymm10, ymm10, ymm10
-											VXORPS ymm11, ymm11, ymm11
-
-											MOV rsi, pImg
-											MOV rdi, pKern
-
-											MOV ecx, Cm
-											cloops:
-											CMP ecx, 0
-											JE cloope
-
-											MOV rdx, rsi
-											VMOVUPS ymm12, [rsi]
-											ADD rsi, r12
-											VMOVUPS ymm13, [rsi]
-											ADD rsi, r12
-											VMOVUPS ymm14, [rsi]
-											MOV rsi, rdx
-											ADD rsi, 32
-
-											MOV rdx, rdi
-											VMOVUPS ymm15, [rdi]
-											ADD rdi, r12
-											VFMADD231PS ymm0, ymm15, ymm12
-											VFMADD231PS ymm1, ymm15, ymm13
-											VFMADD231PS ymm2, ymm15, ymm14
-											VMOVUPS ymm15, [rdi]
-											ADD rdi, r12
-											VFMADD231PS ymm3, ymm15, ymm12
-											VFMADD231PS ymm4, ymm15, ymm13
-											VFMADD231PS ymm5, ymm15, ymm14
-											VMOVUPS ymm15, [rdi]
-											ADD rdi, r12
-											VFMADD231PS ymm6, ymm15, ymm12
-											VFMADD231PS ymm7, ymm15, ymm13
-											VFMADD231PS ymm8, ymm15, ymm14
-											VMOVUPS ymm15, [rdi]
-											VFMADD231PS ymm9, ymm15, ymm12
-											VFMADD231PS ymm10, ymm15, ymm13
-											VFMADD231PS ymm11, ymm15, ymm14
-											MOV rdi, rdx
-											ADD rdi, 32
-
-											SUB ecx, 8
-											JMP cloops
-											cloope:
-
-											MOV rsi, mt
-											VMOVUPS[rsi], ymm0
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm1
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm2
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm3
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm4
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm5
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm6
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm7
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm8
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm9
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm10
-											ADD rsi, 32
-											VMOVUPS[rsi], ymm11
-
-										}
-										{
-											float* t = mt;
-											pOut[0 * NS + 0] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[1 * NS + 0] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[2 * NS + 0] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[0 * NS + 1] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[1 * NS + 1] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[2 * NS + 1] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[0 * NS + 2] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[1 * NS + 2] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[2 * NS + 2] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[0 * NS + 3] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[1 * NS + 3] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[2 * NS + 3] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-										}
-
-									}
-								}
-							}
-						}
-					}
-				}
-
-			}
-		}
-	}
-
-	if (W != Wh) {
-
-		int NB = (Nh / 16 < THREADS) ? 4 : 16;
-		int CB = 512;
-
-		int Nb = ceil((float)Nh / NB);
-		int Cb = ceil((float)Ch / CB);
-
-		#pragma omp parallel for
-		for (int nb = 0; nb < Nb; nb++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 4, 32);
-			int Nl = nb * NB;
-			int Nm = (Nl + NB > Nh) ? Nh - Nl : NB;
-
-			float* kern1 = kern + nb * NB * C;
-			float* out1 = out + nb * NB;
-			for (int cb = 0; cb < Cb; cb++) {
-				int Cl = cb * CB;
-				int Cm = (Cl + CB > Ch) ? Ch - Cl : CB;
-
-				float* img1 = img + cb * CB;
-				float* kern2 = kern1 + cb * CB;
-				for (int b = 0; b < batchsize; b++) {
-					float* img2 = img1 + b * HWC;
-					float* out2 = out1 + b * NHNWN;
-					for (int h = 0; h < H; h++) {
-						float* img3 = img2 + h * WC;
-						for (int x = 0; x < Kx; x++) {
-							int nh = (h * stride + x);
-							float* kern3 = kern2 + x * KyNC;
-							float* out3 = out2 + nh * NWN;
-							for (int y = 0; y < Ky; y++) {
-								float* kern4 = kern3 + y * NC;
-								for (int w = Wh; w < W; w++) {
-									int nw = (w * stride + y);
-									float* pImg = img3 + w * C;
-									float* out4 = out3 + nw * N;
-									for (int n = 0; n < Nm; n += 4) {
-
-										float* pKern = kern4 + n * C;
-										float* pOut = out4 + n;
-
-										__asm {
-
-											MOV r12, C4
-
-											VXORPS ymm0, ymm0, ymm0
-											VXORPS ymm1, ymm1, ymm1
-											VXORPS ymm2, ymm2, ymm2
-											VXORPS ymm3, ymm3, ymm3
-
-											MOV rsi, pImg
-											MOV rdi, pKern
-
-											MOV ecx, Cm
-											cloops :
-											CMP ecx, 0
-												JE cloope
-
-												VMOVUPS ymm12, [rsi]
-												ADD rsi, 32
-
-												MOV rdx, rdi
-												VMOVUPS ymm15, [rdi]
-												ADD rdi, r12
-												VFMADD231PS ymm0, ymm15, ymm12
-												VMOVUPS ymm15, [rdi]
-												ADD rdi, r12
-												VFMADD231PS ymm1, ymm15, ymm12
-												VMOVUPS ymm15, [rdi]
-												ADD rdi, r12
-												VFMADD231PS ymm2, ymm15, ymm12
-												VMOVUPS ymm15, [rdi]
-												VFMADD231PS ymm3, ymm15, ymm12
-												MOV rdi, rdx
-												ADD rdi, 32
-
-												SUB ecx, 8
-												JMP cloops
-												cloope :
-
-											MOV rsi, mt
-												VMOVUPS[rsi], ymm0
-												ADD rsi, 32
-												VMOVUPS[rsi], ymm1
-												ADD rsi, 32
-												VMOVUPS[rsi], ymm2
-												ADD rsi, 32
-												VMOVUPS[rsi], ymm3
-
-										}
-										{
-											float* t = mt;
-											pOut[0] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[1] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[2] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-											t += 8;
-											pOut[3] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-										}
-										{
-											float s1, s2, s3, s4;
-											s1 = s2 = s3 = s4 = 0;
-											for (int c = Ch; c < C; c++) {
-												float w1 = pImg[0 * C + c];
-
-												float k1 = pKern[0 * C + c];
-												float k2 = pKern[1 * C + c];
-												float k3 = pKern[2 * C + c];
-												float k4 = pKern[3 * C + c];
-
-												s1 += w1 * k1;
-												s2 += w1 * k2;
-												s3 += w1 * k3;
-												s4 += w1 * k4;
-											}
-											pOut[0] += s1;
-											pOut[1] += s2;
-											pOut[2] += s3;
-											pOut[3] += s4;
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-
-			}
-		}
-
-		if (N != Nh){
-			#pragma omp parallel for
-			for (int h = 0; h < H; h++) {
-				float* mt = (float*)_aligned_malloc(sizeof(float) * 8, 32);
-				float* img1 = img + h * WC;
-				for (int b = 0; b < batchsize; b++) {
-					float* img2 = img1 + b * HWC;
-					float* out1 = out + b * NHNWN;
-					for (int x = 0; x < Kx; x++) {
-						int nh = (h * stride + x);
-						float* kern1 = kern + x * KyNC;
-						float* out2 = out1 + nh * NWN;
-						for (int y = 0; y < Ky; y++) {
-							float* kern2 = kern1 + y * NC;
-							for (int w = Wh; w < W; w++) {
-								int nw = (w * stride + y);
-								float* pImg = img2 + w * C;
-								float* out4 = out2 + nw * N;
-								for (int n = Nh; n < N; n++) {
-
-									float* pKern = kern2 + n * C;
-									float* pOut = out4 + n;
-
-									__asm {
-
-										VXORPS ymm0, ymm0, ymm0
-
-										MOV rsi, pImg
-										MOV rdi, pKern
-
-										MOV ecx, C8
-										cloops :
-										CMP ecx, 0
-											JE cloope
-
-											VMOVUPS ymm12, [rsi]
-											ADD rsi, 32
-
-											VMOVUPS ymm15, [rdi]
-											ADD rdi, 32
-
-											VFMADD231PS ymm0, ymm15, ymm12
-
-											SUB ecx, 8
-											JMP cloops
-											cloope :
-
-										MOV rsi, mt
-											VMOVUPS[rsi], ymm0
-									}
-									{
-										float* t = mt;
-										pOut[0] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-									}
-									{
-										float s1 = 0;
-										for (int c = Ch; c < C; c++) {
-											float w1 = pImg[0 * C + c];
-											float k1 = pKern[0 * C + c];
-											s1 += w1 * k1;
-										}
-										pOut[0] += s1;
-									}
-								}
-							}
-						}
-					}
-
-
-				}
-			}
-		}
-	}
-
-	if (N != Nh) {
-
-		#pragma omp parallel for
-		for (int nh = 0; nh < NH; nh++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 3, 32);
-			int xl = nh % stride;
-			xl = ((nh - xl) / stride >= H) ? nh - (H - 1) * stride : xl;
-			int xh = (nh + stride > Kx) ? Kx : nh + stride;
-			float* out1 = out + nh * NWN;
-			for (int b = 0; b < batchsize; b++) {
-				float* out2 = out1 + b * NHNWN;
-				float* img1 = img + b * HWC;
-				for (int x = xl; x < xh; x += stride) {
-					int h = (nh - x) / stride;
-					float* img2 = img1 + h * WC;
-					float* kern1 = kern + x * KyNC;
+		int xl = nh % stride;
+		int xh = (nh + 1 < Kx) ? nh + 1 : Kx;
+		xh = (nh >= H) ? 0 : xh;
+		for (int b = 0; b < batchsize; b++) {
+			for (int x = xl; x < xh; x += stride) {
+				int h = (nh - x) / stride;
+				for (int w = 0; w < Wh; w += 3) {
 					for (int y = 0; y < Ky; y++) {
-						float* kern2 = kern1 + y * NC;
-						for (int w = 0; w < Wh; w += 3) {
-							int nw = w * stride + y;
-							float* pImg = img2 + w * C;
-							float* out3 = out2 + nw * N;
-							for (int n = Nh; n < N; n++) {
-								float* pKern = kern2 + n * C;
-								float* pOut = out3 + n;
+						int nw = w * stride + y;
+						for (int n = 0; n < Nh; n += 4) {
+							
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
 
-								__asm {
+							__asm {
 
-									MOV r12, C4
-									MOV r13, NS4
+								VXORPS ymm0, ymm0, ymm0
+								VXORPS ymm1, ymm1, ymm1
+								VXORPS ymm2, ymm2, ymm2
+								VXORPS ymm3, ymm3, ymm3
+								VXORPS ymm4, ymm4, ymm4
+								VXORPS ymm5, ymm5, ymm5
+								VXORPS ymm6, ymm6, ymm6
+								VXORPS ymm7, ymm7, ymm7
+								VXORPS ymm8, ymm8, ymm8
+								VXORPS ymm9, ymm9, ymm9
+								VXORPS ymm10, ymm10, ymm10
+								VXORPS ymm11, ymm11, ymm11
 
-									VXORPS ymm0, ymm0, ymm0
-									VXORPS ymm1, ymm1, ymm1
-									VXORPS ymm2, ymm2, ymm2
+								MOV rsi, pImg
+								MOV rdi, pKern
 
-									MOV rsi, pImg
-									MOV rdi, pKern
+								MOV r12, C4
 
-									MOV ecx, C8
-									cloops:
-									CMP ecx, 0
+								MOV ecx, C8
+								cloops:
+								CMP ecx, 0
+								JE cloope
+
+								MOV rdx, rsi
+								VMOVUPS ymm12, [rsi]
+								ADD rsi, r12
+								VMOVUPS ymm13, [rsi]
+								ADD rsi, r12
+								VMOVUPS ymm14, [rsi]
+								MOV rsi, rdx
+								ADD rsi, 32
+
+								MOV rdx, rdi
+								VMOVUPS ymm15, [rdi]
+								ADD rdi, r12
+								VFMADD231PS ymm0, ymm15, ymm12
+								VFMADD231PS ymm1, ymm15, ymm13
+								VFMADD231PS ymm2, ymm15, ymm14
+								VMOVUPS ymm15, [rdi]
+								ADD rdi, r12
+								VFMADD231PS ymm3, ymm15, ymm12
+								VFMADD231PS ymm4, ymm15, ymm13
+								VFMADD231PS ymm5, ymm15, ymm14
+								VMOVUPS ymm15, [rdi]
+								ADD rdi, r12
+								VFMADD231PS ymm6, ymm15, ymm12
+								VFMADD231PS ymm7, ymm15, ymm13
+								VFMADD231PS ymm8, ymm15, ymm14
+								VMOVUPS ymm15, [rdi]
+								VFMADD231PS ymm9, ymm15, ymm12
+								VFMADD231PS ymm10, ymm15, ymm13
+								VFMADD231PS ymm11, ymm15, ymm14
+								MOV rdi, rdx
+								ADD rdi, 32
+
+								SUB ecx, 8
+								JMP cloops
+								cloope:
+
+								MOV rsi, mt
+								VMOVUPS[rsi], ymm0
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm1
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm2
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm3
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm4
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm5
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm6
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm7
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm8
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm9
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm10
+								ADD rsi, 32
+								VMOVUPS[rsi], ymm11
+							}
+
+							float o11, o12, o13, o14, o21, o22, o23, o24, o31, o32, o33, o34;
+							o11 = o12 = o13 = o14 = o21 = o22 = o23 = o24 = o31 = o32 = o33 = o34 = 0;
+							for (int c = C8; c < C; c++) {
+								float w1 = pImg[0 * C + c];
+								float w2 = pImg[1 * C + c];
+								float w3 = pImg[2 * C + c];
+
+								float n1 = pKern[0 * C + c];
+								float n2 = pKern[1 * C + c];
+								float n3 = pKern[2 * C + c];
+								float n4 = pKern[3 * C + c];
+
+								o11 += w1 * n1;
+								o12 += w1 * n2;
+								o13 += w1 * n3;
+								o14 += w1 * n4;
+								o21 += w2 * n1;
+								o22 += w2 * n2;
+								o23 += w2 * n3;
+								o24 += w2 * n4;
+								o31 += w3 * n1;
+								o32 += w3 * n2;
+								o33 += w3 * n3;
+								o34 += w3 * n4;
+							}
+							float* t = mt;
+							pOut[0 * NS + 0] += o11 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[1 * NS + 0] += o21 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[2 * NS + 0] += o31 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 1] += o12 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[1 * NS + 1] += o22 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[2 * NS + 1] += o32 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 2] += o13 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[1 * NS + 2] += o23 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[2 * NS + 2] += o33 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 3] += o14 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[1 * NS + 3] += o24 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[2 * NS + 3] += o34 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+						}
+						for (int n = Nh; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							__asm {
+
+								VXORPS ymm0, ymm0, ymm0
+								VXORPS ymm1, ymm1, ymm1
+								VXORPS ymm2, ymm2, ymm2
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
 									JE cloope
 
-									VMOVUPS ymm3, [rdi]
-									ADD rdi, 32
-
 									MOV rdx, rsi
-									VMOVUPS ymm4, [rsi]
+									VMOVUPS ymm12, [rsi]
 									ADD rsi, r12
-									VFMADD231PS ymm0, ymm3, ymm4
-									VMOVUPS ymm5, [rsi]
+									VMOVUPS ymm13, [rsi]
 									ADD rsi, r12
-									VFMADD231PS ymm1, ymm3, ymm5
-									VMOVUPS ymm6, [rsi]
+									VMOVUPS ymm14, [rsi]
 									MOV rsi, rdx
 									ADD rsi, 32
-									VFMADD231PS ymm2, ymm3, ymm6
+
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm0, ymm15, ymm12
+									VFMADD231PS ymm1, ymm15, ymm13
+									VFMADD231PS ymm2, ymm15, ymm14
+									ADD rdi, 32
 
 									SUB ecx, 8
 									JMP cloops
-									cloope:
+									cloope :
 
-									MOV rsi, mt
+								MOV rsi, mt
 									VMOVUPS[rsi], ymm0
 									ADD rsi, 32
 									VMOVUPS[rsi], ymm1
 									ADD rsi, 32
 									VMOVUPS[rsi], ymm2
-
-								}
-								{
-									float* t = mt;
-									pOut[0 * NS] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-									t += 8;
-									pOut[1 * NS] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-									t += 8;
-									pOut[2 * NS] += t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
-								}
-								{
-									float s1, s2, s3;
-									s1 = s2 = s3 = 0;
-									for (int c = Ch; c < C; c++) {
-										float k1 = pKern[c];
-										s1 += pImg[0 * C + c] * k1;
-										s2 += pImg[1 * C + c] * k1;
-										s3 += pImg[2 * C + c] * k1;
-									}
-									pOut[0 * NS] += s1;
-									pOut[1 * NS] += s2;
-									pOut[2 * NS] += s3;
-								}
 							}
+
+							float o11, o21, o31;
+							o11 = o21 = o31 = 0;
+							for (int c = C8; c < C; c++) {
+								float w1 = pImg[0 * C + c];
+								float w2 = pImg[1 * C + c];
+								float w3 = pImg[2 * C + c];
+
+								float n1 = pKern[0 * C + c];
+
+								o11 += w1 * n1;
+								o21 += w2 * n1;
+								o31 += w3 * n1;
+							}
+							float* t = mt;
+							pOut[0 * NS + 0] += o11 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[1 * NS + 0] += o21 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[2 * NS + 0] += o31 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
 						}
 					}
 				}
-			}
-		}
-
-	}
-
-	if (C != Ch) {
-
-		#pragma omp parallel for
-		for (int nh = 0; nh < NH; nh++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 3, 32);
-			int xl = nh % stride;
-			xl = ((nh - xl) / stride >= H) ? nh - (H - 1) * stride : xl;
-			int xh = (nh + stride > Kx) ? Kx : nh + stride;
-			float* out1 = out + nh * NWN;
-			for (int b = 0; b < batchsize; b++) {
-				float* out2 = out1 + b * NHNWN;
-				float* img1 = img + b * HWC;
-				for (int x = xl; x < xh; x += stride) {
-					int h = (nh - x) / stride;
-					float* img2 = img1 + h * WC;
-					float* kern1 = kern + x * KyNC;
+				for (int w = Wh; w < W; w++) {
 					for (int y = 0; y < Ky; y++) {
-						float* kern2 = kern1 + y * NC;
-						for (int w = 0; w < Wh; w += 3) {
-							int nw = w * stride + y;
-							float* pImg = img2 + w * C;
-							float* out3 = out2 + nw * N;
-							for (int n = 0; n < Nh; n += 4) {
-								float* pKern = kern2 + n * C;
-								float* pOut = out3 + n;
+						int nw = w * stride + y;
+						for (int n = 0; n < Nh; n += 4) {
 
-								float s11, s12, s13, s14, s21, s22, s23, s24, s31, s32, s33, s34;
-								s11 = s12 = s13 = s14 = s21 = s22 = s23 = s24 = s31 = s32 = s33 = s34 = 0;
-								for (int c = Ch; c < C; c++) {
-									float w1 = pImg[0 * C + c];
-									float w2 = pImg[1 * C + c];
-									float w3 = pImg[2 * C + c];
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
 
-									float k1 = pKern[0 * C + c];
-									float k2 = pKern[1 * C + c];
-									float k3 = pKern[2 * C + c];
-									float k4 = pKern[3 * C + c];
+							__asm {
 
-									s11 += w1 * k1;
-									s12 += w1 * k2;
-									s13 += w1 * k3;
-									s14 += w1 * k4;
-									s21 += w2 * k1;
-									s22 += w2 * k2;
-									s23 += w2 * k3;
-									s24 += w2 * k4;
-									s31 += w3 * k1;
-									s32 += w3 * k2;
-									s33 += w3 * k3;
-									s34 += w3 * k4;
-								}
-								pOut[0 * NS + 0] += s11;
-								pOut[0 * NS + 1] += s12;
-								pOut[0 * NS + 2] += s13;
-								pOut[0 * NS + 3] += s14;
-								pOut[1 * NS + 0] += s21;
-								pOut[1 * NS + 1] += s22;
-								pOut[1 * NS + 2] += s23;
-								pOut[1 * NS + 3] += s24;
-								pOut[2 * NS + 0] += s31;
-								pOut[2 * NS + 1] += s32;
-								pOut[2 * NS + 2] += s33;
-								pOut[2 * NS + 3] += s34;
+								VXORPS ymm0, ymm0, ymm0
+								VXORPS ymm1, ymm1, ymm1
+								VXORPS ymm2, ymm2, ymm2
+								VXORPS ymm3, ymm3, ymm3
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									VMOVUPS ymm12, [rsi]
+									ADD rsi, 32
+
+									MOV rdx, rdi
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm0, ymm15, ymm12
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm1, ymm15, ymm12
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm2, ymm15, ymm12
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm3, ymm15, ymm12
+									MOV rdi, rdx
+									ADD rdi, 32
+
+									SUB ecx, 8
+									JMP cloops
+									cloope :
+
+								MOV rsi, mt
+									VMOVUPS[rsi], ymm0
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm1
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm2
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm3
 							}
+							float o11, o12, o13, o14;
+							o11 = o12 = o13 = o14 = 0;
+							for (int c = C8; c < C; c++) {
+								float w1 = pImg[0 * C + c];
+
+								float n1 = pKern[0 * C + c];
+								float n2 = pKern[1 * C + c];
+								float n3 = pKern[2 * C + c];
+								float n4 = pKern[3 * C + c];
+
+								o11 += w1 * n1;
+								o12 += w1 * n2;
+								o13 += w1 * n3;
+								o14 += w1 * n4;
+							}
+							float* t = mt;
+							pOut[0 * NS + 0] += o11 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 1] += o12 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 2] += o13 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+							t += 8;
+							pOut[0 * NS + 3] += o14 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
+						}
+						for (int n = Nh; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							__asm {
+
+								VXORPS ymm0, ymm0, ymm0
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									VMOVUPS ymm12, [rsi]
+									ADD rsi, 32
+
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm0, ymm15, ymm12
+									ADD rdi, 32
+
+									SUB ecx, 8
+									JMP cloops
+									cloope :
+
+								MOV rsi, mt
+									VMOVUPS[rsi], ymm0
+							}
+							float o11;
+							o11 = 0;
+							for (int c = C8; c < C; c++) {
+								float w1 = pImg[0 * C + c];
+
+								float n1 = pKern[0 * C + c];
+
+								o11 += w1 * n1;
+							}
+							float* t = mt;
+							pOut[0 * NS + 0] += o11 + t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6] + t[7];
 						}
 					}
 				}
 			}
 		}
-
+		_aligned_free(mt);
 	}
+
 }
 
 
@@ -1695,9 +1511,8 @@ DLLEXPORT void avx2_conv3dtranspose_back_i(float* img, float* kern, float* out, 
 	memset(img, 0, sizeof(float) * batchsize * H * W * C);
 
 	int Nh = (N / 4) * 4;
-	int Ch = (C / 8) * 8;
+	int C8 = (C / 8) * 8;
 	int Wh = (W / 3) * 3;
-	int C8 = Ch;
 
 	int WC = W * C;
 	int HWC = H * WC;
@@ -1710,482 +1525,309 @@ DLLEXPORT void avx2_conv3dtranspose_back_i(float* img, float* kern, float* out, 
 	int NS = N * stride;
 	long long NS4 = NS * 4;
 
-	if (Nh != 0 && Ch != 0 && Wh != 0) {
 
-		int NB = 16;
-		int CB = 512;
-
-		int Nb = ceil((float)Nh / NB);
-		int Cb = ceil((float)Ch / CB);
-
-		#pragma omp parallel for
-		for (int h = 0; h < H; h++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
-			float* img1 = img + h * WC;
-			for (int nb = 0; nb < Nb; nb++) {
-				int Nl = nb * NB;
-				int Nm = (Nl + NB > Nh) ? Nh - Nl : NB;
-
-				float* kern1 = kern + nb * NB * C;
-				float* out1 = out + nb * NB;
-				for (int cb = 0; cb < Cb; cb++) {
-					int Cl = cb * CB;
-					int Cm = (Cl + CB > Ch) ? Ch - Cl : CB;
-
-					float* img2 = img1 + cb * CB;
-					float* kern2 = kern1 + cb * CB;
-					for (int b = 0; b < batchsize; b++) {
-						float* img3 = img2 + b * HWC;
-						float* out2 = out1 + b * NHNWN;
-						for (int x = 0; x < Kx; x++) {
-							int nh = (h * stride + x);
-							float* kern3 = kern2 + x * KyNC;
-							float* out3 = out2 + nh * NWN;
-							for (int y = 0; y < Ky; y++) {
-								float* kern4 = kern3 + y * NC;
-								for (int w = 0; w < Wh; w += 3) {
-									int nw = (w * stride + y);
-									float* pImg = img3 + w * C;
-									float* out4 = out3 + nw * N;
-									for (int n = 0; n < Nm; n += 2) {
-
-										float* pKern = kern4 + n * C;
-										float* pOut = out4 + n;
-
-										__asm {
-
-											MOV r12, NS4
-											MOV r13, C4
-
-											MOV rsi, pOut
-											VBROADCASTSS ymm0, [rsi]
-											VBROADCASTSS ymm1, [rsi + 4]
-											ADD rsi, r12
-											VBROADCASTSS ymm2, [rsi]
-											VBROADCASTSS ymm3, [rsi + 4]
-											ADD rsi, r12
-											VBROADCASTSS ymm4, [rsi]
-											VBROADCASTSS ymm5, [rsi + 4]
-
-											MOV rsi, pKern
-											MOV rdi, pImg
-
-											MOV ecx, Cm
-											cloops :
-											CMP ecx, 0
-												JE cloope
-
-												MOV rdx, rsi
-												VMOVUPS ymm7, [rsi]
-												ADD rsi, r13
-												VMOVUPS ymm8, [rsi]
-												MOV rsi, rdx
-												ADD rsi, 32
-
-												MOV rdx, rdi
-												VMOVUPS ymm9, [rdi]
-												VFMADD231PS ymm9, ymm7, ymm0
-												VFMADD231PS ymm9, ymm8, ymm1
-												VMOVUPS[rdi], ymm9
-												ADD rdi, r13
-
-												VMOVUPS ymm9, [rdi]
-												VFMADD231PS ymm9, ymm7, ymm2
-												VFMADD231PS ymm9, ymm8, ymm3
-												VMOVUPS[rdi], ymm9
-												ADD rdi, r13
-
-												VMOVUPS ymm9, [rdi]
-												VFMADD231PS ymm9, ymm7, ymm4
-												VFMADD231PS ymm9, ymm8, ymm5
-												VMOVUPS[rdi], ymm9
-												MOV rdi, rdx
-												ADD rdi, 32
-
-												SUB ecx, 8
-												JMP cloops
-												cloope :
-										}
-
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (W != Wh) {
-
-		int NB = (Nh / 16 < THREADS) ? 4 : 16;
-		int CB = 512;
-
-		int Nb = ceil((float)Nh / NB);
-		int Cb = ceil((float)Ch / CB);
-
-		#pragma omp parallel for
-		for (int h = 0; h < H; h++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
-			float* img1 = img + h * WC;
-			for (int nb = 0; nb < Nb; nb++) {
-				int Nl = nb * NB;
-				int Nm = (Nl + NB > Nh) ? Nh - Nl : NB;
-
-				float* kern1 = kern + nb * NB * C;
-				float* out1 = out + nb * NB;
-				for (int cb = 0; cb < Cb; cb++) {
-					int Cl = cb * CB;
-					int Cm = (Cl + CB > Ch) ? Ch - Cl : CB;
-
-					float* img2 = img1 + cb * CB;
-					float* kern2 = kern1 + cb * CB;
-					for (int b = 0; b < batchsize; b++) {
-						float* img3 = img2 + b * HWC;
-						float* out2 = out1 + b * NHNWN;
-						for (int x = 0; x < Kx; x++) {
-							int nh = (h * stride + x);
-							float* kern3 = kern2 + x * KyNC;
-							float* out3 = out2 + nh * NWN;
-							for (int y = 0; y < Ky; y++) {
-								float* kern4 = kern3 + y * NC;
-								for (int w = Wh; w < W; w++) {
-									int nw = (w * stride + y);
-									float* pImg = img3 + w * C;
-									float* out4 = out3 + nw * N;
-									for (int n = 0; n < Nm; n += 4) {
-
-										float* pKern = kern4 + n * C;
-										float* pOut = out4 + n;
-
-										__asm {
-
-											MOV r13, C4
-
-											MOV rsi, pOut
-											VBROADCASTSS ymm0, [rsi]
-											VBROADCASTSS ymm1, [rsi + 4]
-											VBROADCASTSS ymm2, [rsi + 8]
-											VBROADCASTSS ymm3, [rsi + 12]
-
-											MOV rsi, pKern
-											MOV rdi, pImg
-
-											MOV ecx, Cm
-											cloops :
-											CMP ecx, 0
-												JE cloope
-
-												MOV rdx, rsi
-												VMOVUPS ymm4, [rsi]
-												ADD rsi, r13
-												VMOVUPS ymm5, [rsi]
-												ADD rsi, r13
-												VMOVUPS ymm6, [rsi]
-												ADD rsi, r13
-												VMOVUPS ymm7, [rsi]
-												MOV rsi, rdx
-												ADD rsi, 32
-
-												VMOVUPS ymm9, [rdi]
-												VFMADD231PS ymm9, ymm0, ymm4
-												VFMADD231PS ymm9, ymm1, ymm5
-												VFMADD231PS ymm9, ymm2, ymm6
-												VFMADD231PS ymm9, ymm3, ymm7
-												VMOVUPS[rdi], ymm9
-												ADD rdi, 32
-
-												SUB ecx, 8
-												JMP cloops
-												cloope :
-										}
-										{
-											float n1 = pOut[0];
-											float n2 = pOut[1];
-											float n3 = pOut[2];
-											float n4 = pOut[3];
-											for (int c = Ch; c < C; c++) {
-												float k1 = pKern[0 * C + c];
-												float k2 = pKern[1 * C + c];
-												float k3 = pKern[2 * C + c];
-												float k4 = pKern[3 * C + c];
-
-												pImg[c] += n1 * k1 + n2 * k2 + n3 * k3 + n4 * k4;
-											}
-										}
-
-									}
-									for (int n = Nh; n < N; n++) {
-										float* pKern = kern4 + n * C;
-										float* pOut = out4 + n;
-
-										__asm {
-
-											MOV r13, C4
-
-											MOV rsi, pOut
-											VBROADCASTSS ymm0, [rsi]
-
-											MOV rsi, pKern
-											MOV rdi, pImg
-
-											MOV ecx, Cm
-											cloops :
-											CMP ecx, 0
-												JE cloope
-
-												VMOVUPS ymm4, [rsi]
-												ADD rsi, 32
-
-												VMOVUPS ymm9, [rdi]
-												VFMADD231PS ymm9, ymm0, ymm4
-												VMOVUPS[rdi], ymm9
-												ADD rdi, 32
-
-												SUB ecx, 8
-												JMP cloops
-												cloope :
-										}
-										{
-											float n1 = pOut[0];
-											for (int c = Ch; c < C; c++) {
-												pImg[c] += n1 * pKern[c];
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-
-			}
-			if (N != Nh) {
-				for (int nb = 0; nb < Nb; nb++) {
-					int Nl = nb * NB;
-					int Nm = (Nl + NB > Nh) ? Nh - Nl : NB;
-
-					float* kern1 = kern + nb * NB * C;
-					float* out1 = out + nb * NB;
-					for (int cb = 0; cb < Cb; cb++) {
-						int Cl = cb * CB;
-						int Cm = (Cl + CB > Ch) ? Ch - Cl : CB;
-
-						float* img2 = img1 + cb * CB;
-						float* kern2 = kern1 + cb * CB;
-						for (int b = 0; b < batchsize; b++) {
-							float* img3 = img2 + b * HWC;
-							float* out2 = out1 + b * NHNWN;
-							for (int x = 0; x < Kx; x++) {
-								int nh = (h * stride + x);
-								float* kern3 = kern2 + x * KyNC;
-								float* out3 = out2 + nh * NWN;
-								for (int y = 0; y < Ky; y++) {
-									float* kern4 = kern3 + y * NC;
-									for (int w = Wh; w < W; w++) {
-										int nw = (w * stride + y);
-										float* pImg = img3 + w * C;
-										float* out4 = out3 + nw * N;
-										for (int n = Nh; n < N; n++) {
-											float* pKern = kern4 + n * C;
-											float* pOut = out4 + n;
-
-											__asm {
-
-												MOV r13, C4
-
-												MOV rsi, pOut
-												VBROADCASTSS ymm0, [rsi]
-
-												MOV rsi, pKern
-												MOV rdi, pImg
-
-												MOV ecx, Cm
-												cloops :
-												CMP ecx, 0
-													JE cloope
-
-													VMOVUPS ymm4, [rsi]
-													ADD rsi, 32
-
-													VMOVUPS ymm9, [rdi]
-													VFMADD231PS ymm9, ymm0, ymm4
-													VMOVUPS[rdi], ymm9
-													ADD rdi, 32
-
-													SUB ecx, 8
-													JMP cloops
-													cloope :
-											}
-											{
-												float n1 = pOut[0];
-												for (int c = Ch; c < C; c++) {
-													pImg[c] += n1 * pKern[c];
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-
-				}
-
-			}
-		}
-	}
-
-	if (N != Nh) {
-
-		#pragma omp parallel for
-		for (int h = 0; h < H; h++) {
-			float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
-			float* img1 = img + h * WC;
-			for (int b = 0; b < batchsize; b++) {
-				float* img2 = img1 + b * HWC;
-				float* out1 = out + b * NHNWN;
-				for (int x = 0; x < Kx; x++) {
-					int nh = (h * stride + x);
-					float* kern1 = kern + x * KyNC;
-					float* out2 = out1 + nh * NWN;
+	#pragma omp parallel for
+	for (int h = 0; h < H; h++) {
+		for (int b = 0; b < batchsize; b++) {
+			for (int x = 0; x < Kx; x++) {
+				int nh = h * stride + x;
+				for (int w = 0; w < Wh; w += 3) {
 					for (int y = 0; y < Ky; y++) {
-						float* kern2 = kern1 + y * NC;
-						for (int w = 0; w < Wh; w += 3) {
-							int nw = (w * stride + y);
-							float* pImg = img2 + w * C;
-							float* out3 = out2 + nw * N;
-							for (int n = Nh; n < N; n++) {
+						int nw = w * stride + y;
+						for (int n = 0; n < Nh; n += 4) {
 
-								float* pKern = kern2 + n * C;
-								float* pOut = out3 + n;
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
 
-								__asm {
+							__asm {
 
-									MOV r12, NS4
-									MOV r13, C4
+								MOV r12, NS4
 
-									MOV rsi, pOut
-									VBROADCASTSS ymm0, [rsi]
+								MOV rsi, pOut
+								VBROADCASTSS ymm0, [rsi + 0]
+								VBROADCASTSS ymm1, [rsi + 4]
+								VBROADCASTSS ymm2, [rsi + 8]
+								VBROADCASTSS ymm3, [rsi + 12]
+								ADD rsi, r12
+								VBROADCASTSS ymm4, [rsi + 0]
+								VBROADCASTSS ymm5, [rsi + 4]
+								VBROADCASTSS ymm6, [rsi + 8]
+								VBROADCASTSS ymm7, [rsi + 12]
+								ADD rsi, r12
+								VBROADCASTSS ymm8, [rsi + 0]
+								VBROADCASTSS ymm9, [rsi + 4]
+								VBROADCASTSS ymm10, [rsi + 8]
+								VBROADCASTSS ymm11, [rsi + 12]
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									MOV rdx, rsi
+									VMOVUPS ymm12, [rsi]
 									ADD rsi, r12
-									VBROADCASTSS ymm1, [rsi]
+									VMOVUPS ymm13, [rsi]
 									ADD rsi, r12
-									VBROADCASTSS ymm2, [rsi]
+									VMOVUPS ymm14, [rsi]
+									MOV rsi, rdx
 
-									MOV rsi, pKern
-									MOV rdi, pImg
+									MOV rdx, rdi
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm0
+									VFMADD231PS ymm13, ymm15, ymm4
+									VFMADD231PS ymm14, ymm15, ymm8
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm1
+									VFMADD231PS ymm13, ymm15, ymm5
+									VFMADD231PS ymm14, ymm15, ymm9
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm2
+									VFMADD231PS ymm13, ymm15, ymm6
+									VFMADD231PS ymm14, ymm15, ymm10
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm12, ymm15, ymm3
+									VFMADD231PS ymm13, ymm15, ymm7
+									VFMADD231PS ymm14, ymm15, ymm11
+									MOV rdi, rdx
+									ADD rdi, 32
 
-									MOV ecx, C8
-									cloops :
-									CMP ecx, 0
-										JE cloope
+									VMOVUPS[rsi], ymm12
+									ADD rsi, r12
+									VMOVUPS[rsi], ymm13
+									ADD rsi, r12
+									VMOVUPS[rsi], ymm14
+									MOV rsi, rdx
+									ADD rsi, 32
 
-										VMOVUPS ymm3, [rsi]
-										ADD rsi, 32
+									SUB ecx, 8
+									JMP cloops
+									cloope :
 
-										MOV rdx, rdi
-										VMOVUPS ymm4, [rdi]
-										VFMADD231PS ymm4, ymm3, ymm0
-										VMOVUPS[rdi], ymm4
-										ADD rdi, r13
+							}
 
-										VMOVUPS ymm4, [rdi]
-										VFMADD231PS ymm4, ymm3, ymm1
-										VMOVUPS[rdi], ymm4
-										ADD rdi, r13
+							float o11 = pOut[0 * NS + 0];
+							float o12 = pOut[0 * NS + 1];
+							float o13 = pOut[0 * NS + 2];
+							float o14 = pOut[0 * NS + 3];
+							float o21 = pOut[1 * NS + 0];
+							float o22 = pOut[1 * NS + 1];
+							float o23 = pOut[1 * NS + 2];
+							float o24 = pOut[1 * NS + 3];
+							float o31 = pOut[2 * NS + 0];
+							float o32 = pOut[2 * NS + 1];
+							float o33 = pOut[2 * NS + 2];
+							float o34 = pOut[2 * NS + 3];
+							for (int c = C8; c < C; c++) {
 
-										VMOVUPS ymm4, [rdi]
-										VFMADD231PS ymm4, ymm3, ymm2
-										VMOVUPS[rdi], ymm4
-										MOV rdi, rdx
-										ADD rdi, 32
+								float n1 = pKern[0 * C + c];
+								float n2 = pKern[1 * C + c];
+								float n3 = pKern[2 * C + c];
+								float n4 = pKern[3 * C + c];
 
-										SUB ecx, 8
-										JMP cloops
-										cloope :
-								}
-								{
-									float n1 = pOut[0 * NS + n];
-									float n2 = pOut[1 * NS + n];
-									float n3 = pOut[2 * NS + n];
-									for (int c = Ch; c < C; c++) {
-										pImg[0 * C + c] += n1 * pKern[c];
-										pImg[1 * C + c] += n2 * pKern[c];
-										pImg[2 * C + c] += n3 * pKern[c];
-									}
-								}
+								pImg[0 * C + c] += o11 * n1 + o12 * n2 + o13 * n3 + o14 * n4;
+								pImg[1 * C + c] += o21 * n1 + o22 * n2 + o23 * n3 + o24 * n4;
+								pImg[2 * C + c] += o31 * n1 + o32 * n2 + o33 * n3 + o34 * n4;
+							}
+						}
+						for (int n = Nh; n < N; n++) {
 
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							__asm {
+
+								MOV r12, NS4
+
+								MOV rsi, pOut
+								VBROADCASTSS ymm0, [rsi + 0]
+								ADD rsi, r12
+								VBROADCASTSS ymm4, [rsi + 0]
+								ADD rsi, r12
+								VBROADCASTSS ymm8, [rsi + 0]
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									MOV rdx, rsi
+									VMOVUPS ymm12, [rsi]
+									ADD rsi, r12
+									VMOVUPS ymm13, [rsi]
+									ADD rsi, r12
+									VMOVUPS ymm14, [rsi]
+									MOV rsi, rdx
+
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm12, ymm15, ymm0
+									VFMADD231PS ymm13, ymm15, ymm4
+									VFMADD231PS ymm14, ymm15, ymm8
+									ADD rdi, 32
+
+									VMOVUPS[rsi], ymm12
+									ADD rsi, r12
+									VMOVUPS[rsi], ymm13
+									ADD rsi, r12
+									VMOVUPS[rsi], ymm14
+									MOV rsi, rdx
+									ADD rsi, 32
+
+									SUB ecx, 8
+									JMP cloops
+									cloope :
+
+							}
+
+							float o11 = pOut[0 * NS + 0];
+							float o21 = pOut[1 * NS + 0];
+							float o31 = pOut[2 * NS + 0];
+							for (int c = C8; c < C; c++) {
+
+								float n1 = pKern[0 * C + c];
+
+								pImg[0 * C + c] += o11 * n1;
+								pImg[1 * C + c] += o21 * n1;
+								pImg[2 * C + c] += o31 * n1;
 							}
 						}
 					}
 				}
-			}
-		}
-
-	}
-
-	if (C != Ch) {
-
-		int NB = (Nh / 16 < THREADS) ? 4 : 16;
-		int CB = 512;
-
-		int Nb = ceil((float)Nh / NB);
-		int Cb = ceil((float)Ch / CB);
-
-		#pragma omp parallel for
-		for (int h = 0; h < H; h++) {
-			float* img1 = img + h * WC;
-			for (int b = 0; b < batchsize; b++) {
-				float* img2 = img1 + b * HWC;
-				float* out1 = out + b * NHNWN;
-				for (int x = 0; x < Kx; x++) {
-					int nh = (h * stride + x);
-					float* kern1 = kern + x * KyNC;
-					float* out2 = out1 + nh * NWN;
+				for (int w = Wh; w < W; w++) {
 					for (int y = 0; y < Ky; y++) {
-						float* kern2 = kern1 + y * NC;
-						for (int w = 0; w < Wh; w += 3) {
-							int nw = (w * stride + y);
-							float* pImg = img2 + w * C;
-							float* out3 = out2 + nw * N;
-							for (int n = 0; n < Nh; n += 4) {
+						int nw = w * stride + y;
+						for (int n = 0; n < Nh; n += 4) {
 
-								float* pKern = kern2 + n * C;
-								float* pOut = out3 + n;
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
 
-								float n11 = pOut[0 * NS + 0];
-								float n12 = pOut[0 * NS + 1];
-								float n13 = pOut[0 * NS + 2];
-								float n14 = pOut[0 * NS + 3];
-								float n21 = pOut[1 * NS + 0];
-								float n22 = pOut[1 * NS + 1];
-								float n23 = pOut[1 * NS + 2];
-								float n24 = pOut[1 * NS + 3];
-								float n31 = pOut[2 * NS + 0];
-								float n32 = pOut[2 * NS + 1];
-								float n33 = pOut[2 * NS + 2];
-								float n34 = pOut[2 * NS + 3];
-								for (int c = Ch; c < C; c++) {
-									float k1 = pKern[0 * C + c];
-									float k2 = pKern[1 * C + c];
-									float k3 = pKern[2 * C + c];
-									float k4 = pKern[3 * C + c];
+							__asm {
 
-									pImg[0 * C + c] += n11 * k1 + n12 * k2 + n13 * k3 + n14 * k4;
-									pImg[1 * C + c] += n21 * k1 + n22 * k2 + n23 * k3 + n24 * k4;
-									pImg[2 * C + c] += n31 * k1 + n32 * k2 + n33 * k3 + n34 * k4;
-								}
+								MOV r12, NS4
 
+								MOV rsi, pOut
+								VBROADCASTSS ymm0, [rsi + 0]
+								VBROADCASTSS ymm1, [rsi + 4]
+								VBROADCASTSS ymm2, [rsi + 8]
+								VBROADCASTSS ymm3, [rsi + 12]
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									VMOVUPS ymm12, [rsi]
+
+									MOV rdx, rdi
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm0
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm1
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm12, ymm15, ymm2
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm12, ymm15, ymm3
+									MOV rdi, rdx
+									ADD rdi, 32
+
+									VMOVUPS[rsi], ymm12
+									ADD rsi, 32
+
+									SUB ecx, 8
+									JMP cloops
+									cloope :
+
+							}
+
+							float o11 = pOut[0 * NS + 0];
+							float o12 = pOut[0 * NS + 1];
+							float o13 = pOut[0 * NS + 2];
+							float o14 = pOut[0 * NS + 3];
+							for (int c = C8; c < C; c++) {
+
+								float n1 = pKern[0 * C + c];
+								float n2 = pKern[1 * C + c];
+								float n3 = pKern[2 * C + c];
+								float n4 = pKern[3 * C + c];
+
+								pImg[0 * C + c] += o11 * n1 + o12 * n2 + o13 * n3 + o14 * n4;
+							}
+						}
+						for (int n = Nh; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							__asm {
+
+								MOV r12, NS4
+
+								MOV rsi, pOut
+								VBROADCASTSS ymm0, [rsi + 0]
+
+								MOV rsi, pImg
+								MOV rdi, pKern
+
+								MOV r12, C4
+
+								MOV ecx, C8
+								cloops :
+								CMP ecx, 0
+									JE cloope
+
+									VMOVUPS ymm12, [rsi]
+
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm12, ymm15, ymm0
+									ADD rdi, 32
+
+									VMOVUPS[rsi], ymm12
+									ADD rsi, 32
+
+									SUB ecx, 8
+									JMP cloops
+									cloope :
+
+							}
+
+							float o11 = pOut[0 * NS + 0];
+							for (int c = C8; c < C; c++) {
+
+								float n1 = pKern[0 * C + c];
+
+								pImg[0 * C + c] += o11 * n1;
 							}
 						}
 					}
 				}
 			}
 		}
-
 	}
-
 }
 
 
@@ -2197,9 +1839,9 @@ DLLEXPORT void avx2_conv3dtranspose_back_k(float* img, float* kern, float* out, 
 	memset(kern, 0, sizeof(float) * Kx * Ky * N * C);
 
 	int Nh = (N / 4) * 4;
-	int Ch = (C / 8) * 8;
+	int C8 = (C / 8) * 8;
 	int Wh = (W / 3) * 3;
-	int C8 = Ch;
+	int Wm = W - Wh;
 
 	int WC = W * C;
 	int HWC = H * WC;
@@ -2213,28 +1855,25 @@ DLLEXPORT void avx2_conv3dtranspose_back_k(float* img, float* kern, float* out, 
 	long long N4 = N * 4;
 	long long NS4 = stride * N4;
 
-	if (Ch != 0 && Nh != 0 && Wh != 0) {
-		int T = Kx * Ky * Nh / 4;
-		#pragma omp parallel for
-		for (int t = 0; t < T; t++) {
+	int Nm = ceil((float)N / 4);
+	int T = Kx * Ky * Nm;
+	#pragma omp parallel for
+	for (int t = 0; t < T; t++) {
+		int x = t / (Ky * Nm);
+		int t1 = t % (Ky * Nm);
+		int y = t1 / Nm;
+		int n = (t1 % Nm) * 4;
+		int nl = n;
 
-			int x = t / (Ky * Nh / 4);
-			int t1 = t % (Ky * Nh / 4);
-			int y = t1 / (Nh / 4);
-			int n = (t1 % (Nh / 4)) * 4;
-
-			float* kern1 = kern + x * KyNC + y * NC + n * C;
-			float* out1 = out + y * N + n;
+		if (n + 4 <= N) {
 			for (int b = 0; b < batchsize; b++) {
-				float* img1 = img + b * HWC;
-				float* out2 = out1 + b * NHNWN;
 				for (int h = 0; h < H; h++) {
-					int nh = (h * stride + x);
-					float* img2 = img1 + h * WC;
-					float* pOut = out2 + nh * NWN;
-					for (int c = 0; c < Ch; c += 8) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
+					int nh = h * stride + x;
+					for (int c = 0; c < C8; c += 8) {
+
+						float* pImg = img + b * HWC + h * WC + c;
+						float* pKern = kern + x * KyNC + y * NC + n * C + c;
+						float* pOut = out + b * NHNWN + nh * NWN + y * N + n;
 
 						__asm {
 
@@ -2253,129 +1892,27 @@ DLLEXPORT void avx2_conv3dtranspose_back_k(float* img, float* kern, float* out, 
 							MOV rsi, pImg
 							MOV rdi, pOut
 
-							MOV ecx, Wh
-							cloops :
+							MOV ecx, W
+							wloops :
 							CMP ecx, 0
-								JE cloope
-
-								VMOVUPS ymm4, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm5, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm6, [rsi]
-								ADD rsi, r12
-
-								VBROADCASTSS ymm7, [rdi]
-								VBROADCASTSS ymm8, [rdi + 4]
-								VBROADCASTSS ymm9, [rdi + 8]
-								VBROADCASTSS ymm10, [rdi + 12]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm4, ymm7
-								VFMADD231PS ymm1, ymm4, ymm8
-								VFMADD231PS ymm2, ymm4, ymm9
-								VFMADD231PS ymm3, ymm4, ymm10
-
-								VBROADCASTSS ymm7, [rdi]
-								VBROADCASTSS ymm8, [rdi + 4]
-								VBROADCASTSS ymm9, [rdi + 8]
-								VBROADCASTSS ymm10, [rdi + 12]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm5, ymm7
-								VFMADD231PS ymm1, ymm5, ymm8
-								VFMADD231PS ymm2, ymm5, ymm9
-								VFMADD231PS ymm3, ymm5, ymm10
-
-								VBROADCASTSS ymm7, [rdi]
-								VBROADCASTSS ymm8, [rdi + 4]
-								VBROADCASTSS ymm9, [rdi + 8]
-								VBROADCASTSS ymm10, [rdi + 12]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm6, ymm7
-								VFMADD231PS ymm1, ymm6, ymm8
-								VFMADD231PS ymm2, ymm6, ymm9
-								VFMADD231PS ymm3, ymm6, ymm10
-
-								SUB ecx, 3
-								JMP cloops
-								cloope :
-
-							MOV rsi, pKern
-								VMOVUPS[rsi], ymm0
-								ADD rsi, r12
-								VMOVUPS[rsi], ymm1
-								ADD rsi, r12
-								VMOVUPS[rsi], ymm2
-								ADD rsi, r12
-								VMOVUPS[rsi], ymm3
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (W != Wh) {
-		int Wr = W - Wh;
-		int T = Kx * Ky * Nh / 4;
-		#pragma omp parallel for
-		for (int t = 0; t < T; t++) {
-
-			int x = t / (Ky * Nh / 4);
-			int t1 = t % (Ky * Nh / 4);
-			int y = t1 / (Nh / 4);
-			int n = (t1 % (Nh / 4)) * 4;
-
-			float* kern1 = kern + x * KyNC + y * NC + n * C;
-			float* out1 = out + (Wh * stride + y) * N + n;
-			for (int b = 0; b < batchsize; b++) {
-				float* img1 = img + b * HWC + Wh * C;
-				float* out2 = out1 + b * NHNWN;
-				for (int h = 0; h < H; h++) {
-					int nh = (h * stride + x);
-					float* img2 = img1 + h * WC;
-					float* pOut = out2 + nh * NWN;
-					for (int c = 0; c < Ch; c += 8) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
-
-						__asm {
-
-							MOV r12, C4
-							MOV r13, NS4
-
-							MOV rsi, pKern
-							VMOVUPS ymm0, [rsi]
-							ADD rsi, r12
-							VMOVUPS ymm1, [rsi]
-							ADD rsi, r12
-							VMOVUPS ymm2, [rsi]
-							ADD rsi, r12
-							VMOVUPS ymm3, [rsi]
-
-							MOV rsi, pImg
-							MOV rdi, pOut
-
-							MOV ecx, Wr
-							cloops :
-							CMP ecx, 0
-								JE cloope
+								JE wloope
 
 								VMOVUPS ymm4, [rsi]
 								ADD rsi, r12
 
-								VBROADCASTSS ymm7, [rdi]
+								VBROADCASTSS ymm7, [rdi + 0]
 								VBROADCASTSS ymm8, [rdi + 4]
 								VBROADCASTSS ymm9, [rdi + 8]
 								VBROADCASTSS ymm10, [rdi + 12]
+								VFMADD231PS ymm0, ymm7, ymm4
+								VFMADD231PS ymm1, ymm8, ymm4
+								VFMADD231PS ymm2, ymm9, ymm4
+								VFMADD231PS ymm3, ymm10, ymm4
 								ADD rdi, r13
-								VFMADD231PS ymm0, ymm4, ymm7
-								VFMADD231PS ymm1, ymm4, ymm8
-								VFMADD231PS ymm2, ymm4, ymm9
-								VFMADD231PS ymm3, ymm4, ymm10
 
 								DEC ecx
-								JMP cloops
-								cloope :
+								JMP wloops
+								wloope :
 
 							MOV rsi, pKern
 								VMOVUPS[rsi], ymm0
@@ -2386,25 +1923,23 @@ DLLEXPORT void avx2_conv3dtranspose_back_k(float* img, float* kern, float* out, 
 								ADD rsi, r12
 								VMOVUPS[rsi], ymm3
 						}
+
 					}
-					for (int c = Ch; c < C; c++) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
+					for (int c = C8; c < C; c++) {
+
+						float* pImg = img + b * HWC + h * WC + c;
+						float* pKern = kern + x * KyNC + y * NC + n * C + c;
+						float* pOut = out + b * NHNWN + nh * NWN + y * N + n;
 
 						float s1, s2, s3, s4;
 						s1 = s2 = s3 = s4 = 0;
-						for (int w = 0; w < Wr; w++) {
+						for (int w = 0; w < W; w++) {
 							float i1 = pImg[w * C];
 
-							float o1 = pOut[w * NS + 0];
-							float o2 = pOut[w * NS + 1];
-							float o3 = pOut[w * NS + 2];
-							float o4 = pOut[w * NS + 3];
-
-							s1 += i1 * o1;
-							s2 += i1 * o2;
-							s3 += i1 * o3;
-							s4 += i1 * o4;
+							s1 += i1 * pOut[w * NS + 0];
+							s2 += i1 * pOut[w * NS + 1];
+							s3 += i1 * pOut[w * NS + 2];
+							s4 += i1 * pOut[w * NS + 3];
 						}
 						pKern[0 * C] += s1;
 						pKern[1 * C] += s2;
@@ -2414,230 +1949,67 @@ DLLEXPORT void avx2_conv3dtranspose_back_k(float* img, float* kern, float* out, 
 				}
 			}
 		}
-
-		int Nr = (N - Nh);
-		T = Kx * Ky * Nr;
-		#pragma omp parallel for
-		for (int t = 0; t < T; t++) {
-
-			int x = t / (Ky * Nr);
-			int t1 = t % (Ky * Nr);
-			int y = t1 / Nr;
-			int n = (t1 % Nr) + Nh;
-
-			float* kern1 = kern + x * KyNC + y * NC + n * C;
-			float* out1 = out + (Wh * stride + y) * N + n;
+		else {
 			for (int b = 0; b < batchsize; b++) {
-				float* img1 = img + b * HWC + Wh * C;
-				float* out2 = out1 + b * NHNWN;
 				for (int h = 0; h < H; h++) {
-					int nh = (h * stride + x);
-					float* img2 = img1 + h * WC;
-					float* pOut = out2 + nh * NWN;
-					for (int c = 0; c < Ch; c += 8) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
+					int nh = h * stride + x;
+					for (int n = nl; n < N; n++) {
+						for (int c = 0; c < C8; c += 8) {
 
-						__asm {
+							float* pImg = img + b * HWC + h * WC + c;
+							float* pKern = kern + x * KyNC + y * NC + n * C + c;
+							float* pOut = out + b * NHNWN + nh * NWN + y * N + n;
 
-							MOV r12, C4
-							MOV r13, NS4
+							__asm {
 
-							MOV rsi, pKern
-							VMOVUPS ymm0, [rsi]
+								MOV r12, C4
+								MOV r13, NS4
 
-							MOV rsi, pImg
-							MOV rdi, pOut
+								MOV rsi, pKern
+								VMOVUPS ymm0, [rsi]
 
-							MOV ecx, Wr
-							cloops :
-							CMP ecx, 0
-								JE cloope
+								MOV rsi, pImg
+								MOV rdi, pOut
 
-								VMOVUPS ymm4, [rsi]
-								ADD rsi, r12
+								MOV ecx, W
+								wloops :
+								CMP ecx, 0
+									JE wloope
 
-								VBROADCASTSS ymm7, [rdi]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm4, ymm7
+									VMOVUPS ymm4, [rsi]
+									ADD rsi, r12
 
-								DEC ecx
-								JMP cloops
-								cloope :
+									VBROADCASTSS ymm7, [rdi + 0]
+									VFMADD231PS ymm0, ymm7, ymm4
+									ADD rdi, r13
 
-							MOV rsi, pKern
-								VMOVUPS[rsi], ymm0
+									DEC ecx
+									JMP wloops
+									wloope :
+
+								MOV rsi, pKern
+									VMOVUPS[rsi], ymm0
+							}
+
 						}
-					}
-					for (int c = Ch; c < C; c++) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
+						for (int c = C8; c < C; c++) {
 
-						float s1 = 0;
-						for (int w = 0; w < Wr; w++) {
-							float i1 = pImg[w * C];
+							float* pImg = img + b * HWC + h * WC + c;
+							float* pKern = kern + x * KyNC + y * NC + n * C + c;
+							float* pOut = out + b * NHNWN + nh * NWN + y * N + n;
 
-							float o1 = pOut[w * NS];
+							float s1 = 0;
+							for (int w = 0; w < W; w++) {
+								float i1 = pImg[w * C];
 
-							s1 += i1 * o1;
+								s1 += i1 * pOut[w * NS + 0];
+							}
+							pKern[0 * C] += s1;
 						}
-						pKern[c] += s1;
-					}
-				}
-			}
-		}
-
-	}
-	
-	if (N != Nh) {
-		int Nr = (N - Nh);
-		int T = Kx * Ky * Nr;
-		#pragma omp parallel for
-		for (int t = 0; t < T; t++) {
-
-			int x = t / (Ky * Nr);
-			int t1 = t % (Ky * Nr);
-			int y = t1 / Nr;
-			int n = (t1 % Nr) + Nh;
-
-			float* kern1 = kern + x * KyNC + y * NC + n * C;
-			float* out1 = out + y * N + n;
-			for (int b = 0; b < batchsize; b++) {
-				float* img1 = img + b * HWC;
-				float* out2 = out1 + b * NHNWN;
-				for (int h = 0; h < H; h++) {
-					int nh = (h * stride + x);
-					float* img2 = img1 + h * WC;
-					float* pOut = out2 + nh * NWN;
-					for (int c = 0; c < Ch; c += 8) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
-
-						__asm {
-
-							MOV r12, C4
-							MOV r13, NS4
-
-							MOV rsi, pKern
-							VMOVUPS ymm0, [rsi]
-
-							MOV rsi, pImg
-							MOV rdi, pOut
-
-							MOV ecx, Wh
-							cloops :
-							CMP ecx, 0
-								JE cloope
-
-								VMOVUPS ymm4, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm5, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm6, [rsi]
-								ADD rsi, r12
-
-								VBROADCASTSS ymm7, [rdi]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm4, ymm7
-
-								VBROADCASTSS ymm7, [rdi]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm5, ymm7
-
-								VBROADCASTSS ymm7, [rdi]
-								ADD rdi, r13
-								VFMADD231PS ymm0, ymm6, ymm7
-
-								SUB ecx, 3
-								JMP cloops
-								cloope :
-
-							MOV rsi, pKern
-								VMOVUPS[rsi], ymm0
-						}
-					}
-					for (int c = Ch; c < C; c++) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
-
-						float s = 0;
-						for (int w = 0; w < Wh; w++) {
-							s += pImg[w * C] * pOut[w * NS];
-						}
-						pKern[0] += s;
 					}
 				}
 			}
 		}
 	}
 
-	if (C != Ch) {
-		int T = Kx * Ky * Nh / 4;
-		#pragma omp parallel for
-		for (int t = 0; t < T; t++) {
-
-			int x = t / (Ky * Nh / 4);
-			int t1 = t % (Ky * Nh / 4);
-			int y = t1 / (Nh / 4);
-			int n = (t1 % (Nh / 4)) * 4;
-
-			float* kern1 = kern + x * KyNC + y * NC + n * C;
-			float* out1 = out + y * N + n;
-			for (int b = 0; b < batchsize; b++) {
-				float* img1 = img + b * HWC;
-				float* out2 = out1 + b * NHNWN;
-				for (int h = 0; h < H; h++) {
-					int nh = (h * stride + x);
-					float* img2 = img1 + h * WC;
-					float* pOut = out2 + nh * NWN;
-					for (int c = Ch; c < C; c++) {
-						float* pImg = img2 + c;
-						float* pKern = kern1 + c;
-
-						float s11, s12, s13, s14;
-						s11 = s12 = s13 = s14 = 0;
-						for (int w = 0; w < Wh; w += 3) {
-							float i1 = pImg[(w + 0) * C];
-							float i2 = pImg[(w + 1) * C];
-							float i3 = pImg[(w + 2) * C];
-
-							float o1 = pOut[(w + 0) * NS + 0];
-							float o2 = pOut[(w + 0) * NS + 1];
-							float o3 = pOut[(w + 0) * NS + 2];
-							float o4 = pOut[(w + 0) * NS + 3];
-
-							s11 += i1 * o1;
-							s12 += i1 * o2;
-							s13 += i1 * o3;
-							s14 += i1 * o4;
-
-							o1 = pOut[(w + 1) * NS + 0];
-							o2 = pOut[(w + 1) * NS + 1];
-							o3 = pOut[(w + 1) * NS + 2];
-							o4 = pOut[(w + 1) * NS + 3];
-
-							s11 += i2 * o1;
-							s12 += i2 * o2;
-							s13 += i2 * o3;
-							s14 += i2 * o4;
-
-							o1 = pOut[(w + 2) * NS + 0];
-							o2 = pOut[(w + 2) * NS + 1];
-							o3 = pOut[(w + 2) * NS + 2];
-							o4 = pOut[(w + 2) * NS + 3];
-
-							s11 += i2 * o1;
-							s12 += i2 * o2;
-							s13 += i2 * o3;
-							s14 += i2 * o4;
-						}
-						pKern[0 * C] += s11;
-						pKern[1 * C] += s12;
-						pKern[2 * C] += s13;
-						pKern[3 * C] += s14;
-					}
-				}
-			}
-		}
-	}
 }
