@@ -121,3 +121,4 @@ DLLEXPORT void avx2_squared_difference(float* x, float* y, float* out, int size)
 	}
 
 }
+

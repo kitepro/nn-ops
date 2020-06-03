@@ -166,7 +166,7 @@ void avx2_sigmoid_derv_x8(float* x, float* y, float* g, int C) {
 
 }
 
-void avx2_relu_x8(float* x, float* y, int C) {
+void avx2_relu_x8(float* x, float* y, int C, float leak) {
 
 	__asm {
 
@@ -174,6 +174,8 @@ void avx2_relu_x8(float* x, float* y, int C) {
 		MOV rdi, y
 
 		VBROADCASTSS ymm1, HELPER_VALUE_0
+		VBROADCASTSS ymm4, HELPER_VALUE_1
+		VBROADCASTSS ymm3, leak
 
 		MOV ecx, C
 		cloops:
@@ -184,12 +186,16 @@ void avx2_relu_x8(float* x, float* y, int C) {
 		ADD rsi, 32
 
 		VCMPGTPS ymm2, ymm0, ymm1
-		VANDPS ymm0, ymm0, ymm2
+		VANDPS ymm5, ymm0, ymm2
+		VMULPS ymm0, ymm0, ymm3
+		VXORPS ymm2, ymm2, ymm4
+		VANDPS ymm0, ymm2, ymm0
+		VADDPS ymm0, ymm0, ymm5
 
 		VMOVUPS [rdi], ymm0
 		ADD rdi, 32
 
-		DEC ecx 
+		DEC ecx
 		JMP cloops
 		cloope:
 
@@ -197,7 +203,7 @@ void avx2_relu_x8(float* x, float* y, int C) {
 
 }
 
-void avx2_relu_derv_x8(float* x, float* y, float* g, int C) {
+void avx2_relu_derv_x8(float* x, float* y, float* g, int C, float leak) {
 
 	__asm {
 
@@ -206,6 +212,8 @@ void avx2_relu_derv_x8(float* x, float* y, float* g, int C) {
 		MOV r12, g
 
 		VBROADCASTSS ymm1, HELPER_VALUE_0
+		VBROADCASTSS ymm6, HELPER_VALUE_1
+		VBROADCASTSS ymm4, leak		
 
 		MOV ecx, C
 		cloops :
@@ -219,6 +227,10 @@ void avx2_relu_derv_x8(float* x, float* y, float* g, int C) {
 
 		VCMPGTPS ymm2, ymm0, ymm1
 		VANDPS ymm0, ymm3, ymm2
+		VMULPS ymm3, ymm3, ymm4
+		VXORPS ymm2, ymm2, ymm6
+		VANDPS ymm3, ymm2, ymm3
+		VADDPS ymm0, ymm0, ymm3
 
 		VMOVUPS[rdi], ymm0
 		ADD rdi, 32
@@ -233,7 +245,7 @@ void avx2_relu_derv_x8(float* x, float* y, float* g, int C) {
 
 
 
-DLLEXPORT void avx2_actv_f(float* x, float* y, int size, int type) {
+DLLEXPORT void avx2_actv_f(float* x, float* y, int size, int type, float* data) {
 
 	#pragma omp parallel for
 	for (int t = 0; t < THREADS; t++) {
@@ -244,9 +256,9 @@ DLLEXPORT void avx2_actv_f(float* x, float* y, int size, int type) {
 		int ic = (ih - il) / 8;
 		int im = il + ic * 8;
 		if (type == 0) {
-			avx2_relu_x8(x + il, y + il, ic);
+			avx2_relu_x8(x + il, y + il, ic, data[0]);
 			for (int i = im; i < ih; i++) {
-				y[i] = (x[i] > 0) ? x[i] : 0;
+				y[i] = (x[i] > 0) ? x[i] : data[0] * x[i];
 			}			
 		}
 		else if (type == 1) {
@@ -260,7 +272,7 @@ DLLEXPORT void avx2_actv_f(float* x, float* y, int size, int type) {
 
 }
 
-DLLEXPORT void avx2_actv_b(float* x, float* y, float* g, int size, int type) {
+DLLEXPORT void avx2_actv_b(float* x, float* y, float* g, int size, int type, float* data) {
 	
 	#pragma omp parallel for
 	for (int t = 0; t < THREADS; t++) {
@@ -271,9 +283,9 @@ DLLEXPORT void avx2_actv_b(float* x, float* y, float* g, int size, int type) {
 		int ic = (ih - il) / 8;
 		int im = il + ic * 8;
 		if (type == 0) {
-			avx2_relu_derv_x8(x + il, y + il, g + il, ic);
+			avx2_relu_derv_x8(x + il, y + il, g + il, ic, data[0]);
 			for (int i = im; i < ih; i++) {
-				y[i] = (x[i] > 0) ? g[i] : 0;
+				y[i] = (x[i] > 0) ? g[i] : data[0] * g[i];
 			}
 		}
 		else if (type == 1) {

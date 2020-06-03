@@ -423,7 +423,9 @@ DLLEXPORT void avx2_conv3d_back_i(float* img, float* kern, float* out, int H, in
 
 	#pragma omp parallel for
 	for (int h = 0; h < H; h++) {
-		int xl = (h - (NH - 1) < 0) ? Kx : (h - (NH - 1));
+		int xl = h % stride;
+		int t = h - (NH - 1) * stride;
+		xl = (t < xl) ? xl : t;
 		int xh = (h < Kx) ? h : Kx;
 		for (int b = 0; b < batchsize; b++) {
 			for (int x = xl; x < xh; x += stride) {
@@ -576,11 +578,11 @@ DLLEXPORT void avx2_conv3d_back_i(float* img, float* kern, float* out, int H, in
 									ADD rsi, r12
 									VMOVUPS ymm13, [rsi]
 									VFMADD231PS ymm13, ymm15, ymm4
-									VMOVUPS ymm13, [rsi]
+									VMOVUPS [rsi], ymm13
 									ADD rsi, r12
 									VMOVUPS ymm14, [rsi]
 									VFMADD231PS ymm14, ymm15, ymm8
-									VMOVUPS ymm14, [rsi]
+									VMOVUPS [rsi], ymm14
 									MOV rsi, rdx
 									ADD rsi, 32
 
@@ -594,7 +596,7 @@ DLLEXPORT void avx2_conv3d_back_i(float* img, float* kern, float* out, int H, in
 							float o21 = pOut[1 * N];
 							float o31 = pOut[2 * N];							
 							for (int c = C8; c < C; c++) {
-								float k1 = kern[x * KyNC + y * NC + n * C + c];
+								float k1 = pKern[c];
 
 								pImg[0 * CS + c] += o11 * k1;
 								pImg[1 * CS + c] += o21 * k1;
@@ -744,61 +746,6 @@ DLLEXPORT void avx2_conv3d_back_k(float* img, float* kern, float* out, int H, in
 	long long N4 = N * 4;
 	int CS = C * stride;
 	
-	/*
-	#pragma omp parallel for
-	for (int n = 0; n < N; n++) {
-		for (int b = 0; b < batchsize; b++) {
-			for (int nh = 0; nh < NH; nh++) {
-				for (int x = 0; x < Kx; x++) {
-					int h = nh * stride + x;
-					for (int nw = 0; nw < NWh; nw += 8) {
-						for (int y = 0; y < Ky; y++) {
-							int w = nw * stride + y;
-
-							float o1 = out[b * NHNWN + nh * NWN + nw * N + n];
-							float o2 = out[b * NHNWN + nh * NWN + (nw + 1) * N + n];
-							float o3 = out[b * NHNWN + nh * NWN + (nw + 2) * N + n];
-							float o4 = out[b * NHNWN + nh * NWN + (nw + 3) * N + n];
-							float o5 = out[b * NHNWN + nh * NWN + (nw + 4) * N + n];
-							float o6 = out[b * NHNWN + nh * NWN + (nw + 5) * N + n];
-							float o7 = out[b * NHNWN + nh * NWN + (nw + 6) * N + n];
-							float o8 = out[b * NHNWN + nh * NWN + (nw + 7) * N + n];
-
-							float* pk1 = kern + (x * KyNC + y * NC + n * C);
-
-							float* pi1 = &img[b * HWC + h * WC + (w + 0) * C];
-							float* pi2 = &img[b * HWC + h * WC + (w + 1 * stride) * C];
-							float* pi3 = &img[b * HWC + h * WC + (w + 2 * stride) * C];
-							float* pi4 = &img[b * HWC + h * WC + (w + 3 * stride) * C];
-							float* pi5 = &img[b * HWC + h * WC + (w + 4 * stride) * C];
-							float* pi6 = &img[b * HWC + h * WC + (w + 5 * stride) * C];
-							float* pi7 = &img[b * HWC + h * WC + (w + 6 * stride) * C];
-							float* pi8 = &img[b * HWC + h * WC + (w + 7 * stride) * C];
-
-							for (int c = 0; c < C; c++) {
-								pk1[c] += pi1[c] * o1 + pi2[c] * o2 + pi3[c] * o3 + pi4[c] * o4 + pi5[c] * o5 + pi6[c] * o6 + pi7[c] * o7 + pi8[c] * o8;
-							}
-						}
-					}
-					for (int nw = NWh; nw < NW; nw++) {
-						for (int y = 0; y < Ky; y++) {
-							int w = nw * stride + y;
-
-							float o1 = out[b * NHNWN + nh * NWN + nw * N + n];
-							float* pk1 = kern + (x * KyNC + y * NC + n * C);
-							float* pi1 = &img[b * HWC + h * WC + (w + 0) * C];
-
-							for (int c = 0; c < C; c++) {
-								pk1[c] += pi1[c] * o1;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	*/
-
 	int Nh = (N / 4) * 4;
 	int Nm = ceil((float)N / 4);
 	int T = Kx * Ky * Nm;
@@ -1139,13 +1086,14 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 	int NS = N * stride;
 	long long NS4 = NS * 4;
 
+
 	#pragma omp parallel for
 	for (int nh = 0; nh < NH; nh++) {
 		float* mt = (float*)_aligned_malloc(sizeof(float) * 8 * 12, 32);
 
 		int xl = nh % stride;
 		int xh = (nh + 1 < Kx) ? nh + 1 : Kx;
-		xh = (nh >= H) ? 0 : xh;
+		xh = (nh >= H * stride) ? 0 : xh;
 		for (int b = 0; b < batchsize; b++) {
 			for (int x = xl; x < xh; x += stride) {
 				int h = (nh - x) / stride;
@@ -1153,7 +1101,7 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 					for (int y = 0; y < Ky; y++) {
 						int nw = w * stride + y;
 						for (int n = 0; n < Nh; n += 4) {
-							
+
 							float* pImg = img + b * HWC + h * WC + w * C;
 							float* pKern = kern + x * KyNC + y * NC + n * C;
 							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
@@ -1179,70 +1127,70 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 								MOV r12, C4
 
 								MOV ecx, C8
-								cloops:
+								cloops :
 								CMP ecx, 0
-								JE cloope
+									JE cloope
 
-								MOV rdx, rsi
-								VMOVUPS ymm12, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm13, [rsi]
-								ADD rsi, r12
-								VMOVUPS ymm14, [rsi]
-								MOV rsi, rdx
-								ADD rsi, 32
+									MOV rdx, rsi
+									VMOVUPS ymm12, [rsi]
+									ADD rsi, r12
+									VMOVUPS ymm13, [rsi]
+									ADD rsi, r12
+									VMOVUPS ymm14, [rsi]
+									MOV rsi, rdx
+									ADD rsi, 32
 
-								MOV rdx, rdi
-								VMOVUPS ymm15, [rdi]
-								ADD rdi, r12
-								VFMADD231PS ymm0, ymm15, ymm12
-								VFMADD231PS ymm1, ymm15, ymm13
-								VFMADD231PS ymm2, ymm15, ymm14
-								VMOVUPS ymm15, [rdi]
-								ADD rdi, r12
-								VFMADD231PS ymm3, ymm15, ymm12
-								VFMADD231PS ymm4, ymm15, ymm13
-								VFMADD231PS ymm5, ymm15, ymm14
-								VMOVUPS ymm15, [rdi]
-								ADD rdi, r12
-								VFMADD231PS ymm6, ymm15, ymm12
-								VFMADD231PS ymm7, ymm15, ymm13
-								VFMADD231PS ymm8, ymm15, ymm14
-								VMOVUPS ymm15, [rdi]
-								VFMADD231PS ymm9, ymm15, ymm12
-								VFMADD231PS ymm10, ymm15, ymm13
-								VFMADD231PS ymm11, ymm15, ymm14
-								MOV rdi, rdx
-								ADD rdi, 32
+									MOV rdx, rdi
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm0, ymm15, ymm12
+									VFMADD231PS ymm1, ymm15, ymm13
+									VFMADD231PS ymm2, ymm15, ymm14
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm3, ymm15, ymm12
+									VFMADD231PS ymm4, ymm15, ymm13
+									VFMADD231PS ymm5, ymm15, ymm14
+									VMOVUPS ymm15, [rdi]
+									ADD rdi, r12
+									VFMADD231PS ymm6, ymm15, ymm12
+									VFMADD231PS ymm7, ymm15, ymm13
+									VFMADD231PS ymm8, ymm15, ymm14
+									VMOVUPS ymm15, [rdi]
+									VFMADD231PS ymm9, ymm15, ymm12
+									VFMADD231PS ymm10, ymm15, ymm13
+									VFMADD231PS ymm11, ymm15, ymm14
+									MOV rdi, rdx
+									ADD rdi, 32
 
-								SUB ecx, 8
-								JMP cloops
-								cloope:
+									SUB ecx, 8
+									JMP cloops
+									cloope :
 
 								MOV rsi, mt
-								VMOVUPS[rsi], ymm0
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm1
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm2
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm3
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm4
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm5
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm6
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm7
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm8
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm9
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm10
-								ADD rsi, 32
-								VMOVUPS[rsi], ymm11
+									VMOVUPS[rsi], ymm0
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm1
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm2
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm3
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm4
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm5
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm6
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm7
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm8
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm9
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm10
+									ADD rsi, 32
+									VMOVUPS[rsi], ymm11
 							}
 
 							float o11, o12, o13, o14, o21, o22, o23, o24, o31, o32, o33, o34;
@@ -1500,6 +1448,71 @@ DLLEXPORT void avx2_conv3dtranspose(float* img, float* kern, float* out, int H, 
 		_aligned_free(mt);
 	}
 
+	/*
+	#pragma omp parallel for
+	for (int nh = 0; nh < NH; nh++) {
+		int xl = nh % stride;
+		for (int b = 0; b < batchsize; b++) {
+			for (int x = xl; x < Kx; x += stride) {
+				int h = (nh + x) / stride;
+				int wl = (Ky / (stride + 1)) + 1;
+				for (int w = 0; w < 0; w++) {
+					int yh = (w * stride < Ky) ? w * stride : Ky;
+					for (int y = 0; y < yh; y++) {
+						int nw = w * stride - y;
+						for (int n = 0; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							float s = 0;
+							for (int c = 0; c < C; c++) {
+								s += pImg[c] * pKern[c];
+							}
+							pOut[0] += s;
+						}
+					}
+				}
+				for (int y = 0; y < Ky; y++) {
+					for (int w = wl; w < W - wl; w++) {
+						int nw = w * stride - y;
+						for (int n = 0; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							float s = 0;
+							for (int c = 0; c < C; c++) {
+								s += pImg[c] * pKern[c];
+							}
+							pOut[0] += s;
+						}
+					}
+				}
+				for (int w = W - wl; w < 0; w++) {
+					int yl = W - wl - w + 1;
+					for (int y = yl; y < Ky; y++) {
+						int nw = w * stride - y;
+						for (int n = 0; n < N; n++) {
+
+							float* pImg = img + b * HWC + h * WC + w * C;
+							float* pKern = kern + x * KyNC + y * NC + n * C;
+							float* pOut = out + b * NHNWN + nh * NWN + nw * N + n;
+
+							float s = 0;
+							for (int c = 0; c < C; c++) {
+								s += pImg[c] * pKern[c];
+							}
+							pOut[0] += s;
+						}
+					}
+				}
+			}
+		}
+	}
+	*/
 }
 
 
