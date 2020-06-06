@@ -11,12 +11,12 @@ DLLEXPORT float* avx2_malloc(unsigned long long size) {
 	return (float*)_aligned_malloc(size, 32);
 }
 
-DLLEXPORT void batch_norm(float* x, float* sig, float* out, int size, int batchsize, float eps) {
+DLLEXPORT void batch_norm(float* x, float* cache, float* out, int size, int batchsize, float eps) {
 
 	int sizeperbatch = size / batchsize;
 	int spb8 = (sizeperbatch / 8) * 8;
 
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for (int b = 0; b < batchsize; b++) {
 		int p = b * sizeperbatch;
 		float* px = x + p;
@@ -61,7 +61,8 @@ DLLEXPORT void batch_norm(float* x, float* sig, float* out, int size, int batchs
 		}
 		sd /= sizeperbatch;
 		sd = sqrt(sd + eps);
-		sig[b] = sd;
+		cache[b * 2 + 0] = sd;
+		cache[b * 2 + 1] = mu;
 
 		__asm {
 
@@ -91,48 +92,35 @@ DLLEXPORT void batch_norm(float* x, float* sig, float* out, int size, int batchs
 		for (int i = spb8; i < sizeperbatch; i++) {
 			po[i] = (px[i] - mu) / sd;
 		}
+		_aligned_free(mt);
 
 	}
 
 }
 
-DLLEXPORT void batch_norm_back(float* x, float* sig, float* grad, int size, int batchsize) {
+DLLEXPORT void batch_norm_back(float* x, float* out, float* cache, float* grad, int size, int batchsize) {
 
 	int sizeperbatch = size / batchsize;
-	int spb8 = (sizeperbatch / 8) * 8;
+	int spb8 = 0;// (sizeperbatch / 8) * 8;
 
 	#pragma omp parallel for
 	for (int b = 0; b < batchsize; b++) {
 		int p = b * sizeperbatch;
 		float* px = x + p;
-		float* po = grad + p;
+		float* pg = grad + p;
+		float* po = out + p;
 
-		float sd = sig[b];
-		__asm {
+		float sder = cache[b * 2 + 0];
+		float mu = cache[b * 2 + 1];
 
-			VBROADCASTSS ymm0, sd
+		float t1 = (2 * pow(sder, 3));
+		float t2 = 2 / sizeperbatch;
+		float t3 = 2 / sizeperbatch / sizeperbatch;
 
-			MOV rsi, px
-			MOV rdi, po
+		for (int i = 0; i < sizeperbatch; i++) {
+			float dsd = -pg[i] * (px[i] - mu) / t1;
 
-			MOV ecx, spb8
-			loops :
-			CMP ecx, 0
-			JE loope
-
-			VMOVUPS ymm2, [rdi]
-			ADD rdi, 32
-			VDIVPS ymm2, ymm2, ymm0
-			VMOVUPS[rsi], ymm2
-			ADD rsi, 32
-
-			SUB ecx, 8
-			JMP loops
-			loope :
-
-		}
-		for (int i = spb8; i < sizeperbatch; i++) {
-			po[i] = px[i]/sig[b];
+			po[i] = pg[i] / sder + dsd * (px[i] - mu) * t2 + (-pg[i] / sder - dsd * (px[i] - mu) * t3);
 		}
 
 	}

@@ -31,9 +31,7 @@ DLLEXPORT void maxpool2d(float* img, float* out, int H, int W, int C, int Kx, in
 
 					float m = -9999999999999;
 					for (int x = 0; x < Kx; x++) {
-						int h = nh * stride + x;
 						for (int y = 0; y < Ky; y++) {
-							int w = nw * stride + y;
 							float v = pImg[x * WC + y * C];
 							m = (m < v) ? v : m;
 						}
@@ -55,6 +53,8 @@ DLLEXPORT void maxpool2d_back(float* img, float* grad, float* out, int H, int W,
 	int NWC = NW * C;
 	int NHNWC = NH * NWC;
 
+	memset(out, 0, sizeof(float) * batchsize * HWC);
+
 	#pragma omp parallel for
 	for (int c = 0; c < C; c++) {
 		for (int nh = 0; nh < NH; nh++) {
@@ -67,9 +67,7 @@ DLLEXPORT void maxpool2d_back(float* img, float* grad, float* out, int H, int W,
 					float m = -9999999999999;
 					int mi = 0;
 					for (int x = 0; x < Kx; x++) {
-						int h = nh * stride + x;
 						for (int y = 0; y < Ky; y++) {
-							int w = nw * stride + y;
 							int p = x * WC + y * C;
 							float v = pImg[p];
 							if (m < v) {
@@ -78,7 +76,7 @@ DLLEXPORT void maxpool2d_back(float* img, float* grad, float* out, int H, int W,
 							}
 						}
 					}
-					pOut[mi] = pGrad[0];
+					pOut[mi] += pGrad[0];
 				}
 			}
 		}

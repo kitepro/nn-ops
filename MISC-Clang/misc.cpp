@@ -86,39 +86,3 @@ DLLEXPORT void avx2_sum(float* x, float* y, int stride, int xsize) {
 	}
 
 }
-
-DLLEXPORT void avx2_squared_difference(float* x, float* y, float* out, int size) {
-
-	#pragma omp parallel for
-	for (int t = 0; t < THREADS; t++) {
-
-		int il = t * ((float)size / THREADS);
-		int ih = (t + 1) * ((float)size / THREADS);
-		int im = il + ((ih - il) / 8) * 8;
-
-		for (int i = il; i < im; i += 8) {
-			float* pX = x + i;
-			float* pY = y + i;
-			float* pOut = out + i;
-			__asm {
-				MOV rsi, pX
-				MOV rdi, pY
-				MOV r12, pOut
-
-				VMOVUPS ymm0, [rsi]
-				VMOVUPS ymm1, [rdi]
-
-				VSUBPS ymm0, ymm0, ymm1
-				VMULPS ymm0, ymm0, ymm0
-
-				VMOVUPS [r12], ymm0
-			}
-		}
-		for (int i = im; i < ih; i++) {
-			out[i] = (x[i] - y[i]) * (x[i] - y[i]);
-		}
-
-	}
-
-}
-
